@@ -35,6 +35,7 @@ type Net struct {
 	active      []net.Listener
 	mutex       sync.Mutex
 	inheritOnce sync.Once
+	startOnce   sync.Once
 
 	// used in tests to override the default behavior of starting from fd 3.
 	fdStart int
@@ -204,47 +205,57 @@ func isSameAddr(a1, a2 net.Addr) bool {
 // deployed binary to be started. It returns the pid of the newly started
 // process when successful.
 func (n *Net) StartProcess() (int, error) {
-	listeners, err := n.activeListeners()
-	if err != nil {
-		return 0, err
-	}
-
-	// Extract the fds from the listeners.
-	files := make([]*os.File, len(listeners))
-	for i, l := range listeners {
-		files[i], err = l.(filer).File()
+	var ret int
+	var err error
+	n.startOnce.Do(func() {
+		listeners, err := n.activeListeners()
 		if err != nil {
-			return 0, err
+			ret, err = 0, err
+			return
 		}
-		defer files[i].Close()
-	}
 
-	// Use the original binary location. This works with symlinks such that if
-	// the file it points to has been changed we will use the updated symlink.
-	argv0, err := exec.LookPath(os.Args[0])
-	if err != nil {
-		return 0, err
-	}
-
-	// Pass on the environment and replace the old count key with the new one.
-	var env []string
-	for _, v := range os.Environ() {
-		if !strings.HasPrefix(v, envCountKeyPrefix) {
-			env = append(env, v)
+		// Extract the fds from the listeners.
+		files := make([]*os.File, len(listeners))
+		for i, l := range listeners {
+			files[i], err = l.(filer).File()
+			if err != nil {
+				ret, err = 0, err
+				return
+			}
+			defer files[i].Close()
 		}
-	}
-	env = append(env, fmt.Sprintf("%s%d", envCountKeyPrefix, len(listeners)))
 
-	allFiles := append([]*os.File{os.Stdin, os.Stdout, os.Stderr}, files...)
-	process, err := os.StartProcess(argv0, os.Args, &os.ProcAttr{
-		Dir:   originalWD,
-		Env:   env,
-		Files: allFiles,
+		// Use the original binary location. This works with symlinks such that if
+		// the file it points to has been changed we will use the updated symlink.
+		argv0, err := exec.LookPath(os.Args[0])
+		if err != nil {
+			ret, err = 0, err
+			return
+		}
+
+		// Pass on the environment and replace the old count key with the new one.
+		var env []string
+		for _, v := range os.Environ() {
+			if !strings.HasPrefix(v, envCountKeyPrefix) {
+				env = append(env, v)
+			}
+		}
+		env = append(env, fmt.Sprintf("%s%d", envCountKeyPrefix, len(listeners)))
+
+		allFiles := append([]*os.File{os.Stdin, os.Stdout, os.Stderr}, files...)
+		process, err := os.StartProcess(argv0, os.Args, &os.ProcAttr{
+			Dir:   originalWD,
+			Env:   env,
+			Files: allFiles,
+		})
+		if err != nil {
+			ret, err = 0, err
+			return
+		}
+		ret, err = process.Pid, nil
+		return
 	})
-	if err != nil {
-		return 0, err
-	}
-	return process.Pid, nil
+	return ret, err
 }
 
 type filer interface {

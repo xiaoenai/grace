@@ -15,8 +15,8 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/facebookgo/grace/gracenet"
 	"github.com/facebookgo/httpdown"
+	"github.com/xiaoenai/grace/gracenet"
 )
 
 var (
@@ -35,11 +35,11 @@ type app struct {
 	errors    chan error
 }
 
-func newApp(servers []*http.Server) *app {
+func newApp(servers []*http.Server, gnet *gracenet.Net) *app {
 	return &app{
 		servers:   servers,
 		http:      &httpdown.HTTP{},
-		net:       &gracenet.Net{},
+		net:       gnet,
 		listeners: make([]net.Listener, 0, len(servers)),
 		sds:       make([]httpdown.Server, 0, len(servers)),
 
@@ -118,10 +118,14 @@ func (a *app) signalHandler(wg *sync.WaitGroup) {
 	}
 }
 
+func Serve(servers ...*http.Server) error {
+	return ServeWithNet(&gracenet.Net{}, servers...)
+}
+
 // Serve will serve the given http.Servers and will monitor for signals
 // allowing for graceful termination (SIGTERM) or restart (SIGUSR2).
-func Serve(servers ...*http.Server) error {
-	a := newApp(servers)
+func ServeWithNet(gnet *gracenet.Net, servers ...*http.Server) error {
+	a := newApp(servers, gnet)
 
 	// Acquire Listeners
 	if err := a.listen(); err != nil {

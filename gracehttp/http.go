@@ -152,7 +152,7 @@ func ServeWithNet(gnet *gracenet.Net, servers ...*http.Server) error {
 
 	// Close the parent if we inherited and it wasn't init that started us.
 	if didInherit && ppid != 1 {
-		if err := syscall.Kill(ppid, syscall.SIGTERM); err != nil {
+		if err := a.net.Kill(ppid, syscall.SIGTERM); err != nil {
 			return fmt.Errorf("failed to close parent: %s", err)
 		}
 	}

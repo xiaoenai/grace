@@ -10,12 +10,14 @@ package gracenet
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 )
 
 const (
@@ -36,9 +38,18 @@ type Net struct {
 	mutex       sync.Mutex
 	inheritOnce sync.Once
 	startOnce   sync.Once
+	killOnce    sync.Once
 
 	// used in tests to override the default behavior of starting from fd 3.
 	fdStart int
+}
+
+func (n *Net) Kill(pid int, signum syscall.Signal) error {
+	var err error
+	n.killOnce.Do(func() {
+		err = syscall.Kill(pid, signum)
+	})
+	return err
 }
 
 func (n *Net) inherit() error {
@@ -242,6 +253,7 @@ func (n *Net) StartProcess() (int, error) {
 		}
 		env = append(env, fmt.Sprintf("%s%d", envCountKeyPrefix, len(listeners)))
 
+		log.Printf("start process at %s\n", argv0)
 		allFiles := append([]*os.File{os.Stdin, os.Stdout, os.Stderr}, files...)
 		process, err := os.StartProcess(argv0, os.Args, &os.ProcAttr{
 			Dir:   originalWD,

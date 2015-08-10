@@ -39,6 +39,7 @@ type Net struct {
 	inheritOnce sync.Once
 	startOnce   sync.Once
 	killOnce    sync.Once
+	PathPrefix  string
 
 	// used in tests to override the default behavior of starting from fd 3.
 	fdStart int
@@ -238,7 +239,7 @@ func (n *Net) StartProcess() (int, error) {
 
 		// Use the original binary location. This works with symlinks such that if
 		// the file it points to has been changed we will use the updated symlink.
-		argv0, err := exec.LookPath(os.Args[0])
+		argv0, err := exec.LookPath(n.PathPrefix + os.Args[0])
 		if err != nil {
 			ret, err = 0, err
 			return
